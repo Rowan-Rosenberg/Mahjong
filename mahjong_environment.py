@@ -114,7 +114,7 @@ def remove_melds(counts):
 
 def is_seven_pairs_win(hand):
         
-    # In a valid 7 pairs hand (14 tiles), the tiles can be arranged as 7 pairs.
+    # Check if the hand is made of 7 pairs.
     # If a tile appears 4 times, it counts as two pairs.
         
     if len(hand) != 14:
@@ -232,24 +232,15 @@ class MahjongEnvironment:
         # Add the regular tiles to the wall
         for i in range(3):
             for j in range(1, 10):
-                self.wall.append(Tile(i, j))
-                self.wall.append(Tile(i, j))
-                self.wall.append(Tile(i, j))
-                self.wall.append(Tile(i, j))
+                self.wall += [Tile(i, j)] * 4
 
         # Add the wind tiles to the wall
         for i in range(1, 5):
-            self.wall.append(Tile(3, i))
-            self.wall.append(Tile(3, i))
-            self.wall.append(Tile(3, i))
-            self.wall.append(Tile(3, i))
+            self.wall += [Tile(3, i)] * 4
 
         # Add the dragon tiles to the wall
         for i in range(1, 4):
-            self.wall.append(Tile(4, i))
-            self.wall.append(Tile(4, i))
-            self.wall.append(Tile(4, i))
-            self.wall.append(Tile(4, i))
+            self.wall += [Tile(4, i)] * 4
 
         # Shuffle the tiles
         random.shuffle(self.wall)
@@ -387,7 +378,7 @@ class MahjongEnvironment:
                         self.player_hands[self.current_player].pop(self.player_hands[self.current_player].index(tile))
                         count -= 1
                 # Create meld with 4 copies
-                self.player_melds[self.current_player] += [tile,tile,tile,tile]
+                self.player_melds[self.current_player] += [tile] * 4
                 # Get tile from other end of wall
                 self.player_hands[self.current_player].append(self.wall.pop(0))
                 # Continue from konging player
@@ -450,7 +441,7 @@ class MahjongEnvironment:
                     # Remove discard from pile
                     tile = self.discard_pile.pop()
                     # Create meld with 4 copies
-                    self.player_melds[player] += [tile,tile,tile,tile]
+                    self.player_melds[player] += [tile] * 4
                     # Get tile from other end of wall
                     self.player_hands[player].append(self.wall.pop(0))
                     # Continue from konging player
@@ -474,7 +465,7 @@ class MahjongEnvironment:
                     # Remove discard from pile
                     tile = self.discard_pile.pop()
                     # Create meld with 3 copies
-                    self.player_melds[player] += [tile,tile,tile]
+                    self.player_melds[player] += [tile] * 3
                     # Continue from punging player
                     self.current_player = player
                     self.has_picked_up = True
