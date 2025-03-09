@@ -187,11 +187,494 @@ def is_thirteen_orphans_win(hand):
 
     return pair_found
 
+""" Helper functions for scoring standard wins """
+
+def partition_groups(tiles):
+    """
+    Recursively partitions a sorted list of tiles into groups of 3.
+    Each group must be either:
+      - a pung (three identical tiles), or
+      - a chow (three consecutive numbers in the same suit; honors cannot form chows).
+    Returns a list of partitions, where each partition is a list of groups (each group is a list of tiles).
+    """
+    if not tiles:
+        return [[]]
+    
+    partitions = []
+    first = tiles[0]
+    
+    # Option 1: Try a pung (three identical tiles)
+    if tiles.count(first) >= 3:
+        new_tiles = list(tiles)
+        for _ in range(3):
+            new_tiles.remove(first)
+        for sub in partition_groups(new_tiles):
+            partitions.append([[first, first, first]] + sub)
+            
+    # Option 2: Try a chow (only for suited tiles that are not honors, and where first.number <= 7)
+    if first.suit in {"bamboo", "character", "dot"} and first.number <= 7:
+        needed1 = Tile(first.suit, first.number + 1)
+        needed2 = Tile(first.suit, first.number + 2)
+        if needed1 in tiles and needed2 in tiles:
+            new_tiles = list(tiles)
+            new_tiles.remove(first)
+            new_tiles.remove(needed1)
+            new_tiles.remove(needed2)
+            for sub in partition_groups(new_tiles):
+                partitions.append([[first, needed1, needed2]] + sub)
+    return partitions
+
+def classify_group(group):
+    """
+    Given a group (list of Tile objects), classify it as one of:
+      - ("chow", suit, (n, n+1, n+2))
+      - ("pung", suit, number)
+      - ("kong", suit, number)
+    Returns None if the group is invalid.
+    """
+    if len(group) == 3:
+        if group[0].suit == group[1].suit == group[2].suit:
+            # Check if it is a pung (all tiles identical)
+            if group[0] == group[1] and group[1] == group[2]:
+                return ("pung", group[0].suit, group[0].number)
+            else:
+                nums = sorted([t.number for t in group])
+                if nums[0] + 1 == nums[1] and nums[1] + 1 == nums[2]:
+                    return ("chow", group[0].suit, tuple(nums))
+    elif len(group) == 4:
+        # Check for kong (four identical tiles)
+        if (group[0].suit == group[1].suit == group[2].suit == group[3].suit and
+            group[0] == group[1] == group[2] == group[3]):
+            return ("kong", group[0].suit, group[0].number)
+    return None
+
+def score_pure_double_chow(groups):
+    """
+    For each chow that appears at least twice in the same suit with the identical sequence,
+    add one point per pair.
+    """
+    chow_counts = {}
+    for g in groups:
+        if g[0] == "chow":
+            key = (g[1], g[2])  # (suit, sequence)
+            chow_counts[key] = chow_counts.get(key, 0) + 1
+    score = 0
+    for key, count in chow_counts.items():
+        score += count // 2
+    return score
+
+def score_mixed_double_chow(groups):
+    """
+    For each chow sequence (ignoring suit) that appears in at least two different suits,
+    add one point (provided no pure double chow exists for that sequence).
+    """
+    seq_suits = {}
+    for g in groups:
+        if g[0] == "chow":
+            seq = g[2]  # the numerical sequence
+            seq_suits.setdefault(seq, set()).add(g[1])
+    score = 0
+    for seq, suits in seq_suits.items():
+        if len(suits) >= 2:
+            # Only score mixed double if no pure double exists for that sequence.
+            pure_exists = any(sum(1 for g in groups if g[0]=="chow" and g[1]==s and g[2]==seq) >= 2 
+                             for s in suits)
+            if not pure_exists:
+                score += 1
+    return score
+
+def score_short_straight(groups):
+    """
+    For each suit, if there are two chow groups whose starting numbers are consecutive 
+    (i.e. one chow is, say, 1-2-3 and another is 4-5-6), add one point.
+    """
+    suit_starts = {}
+    for g in groups:
+        if g[0] == "chow":
+            suit = g[1]
+            start = g[2][0]
+            suit_starts.setdefault(suit, []).append(start)
+    score = 0
+    for suit, starts in suit_starts.items():
+        starts = sorted(starts)
+        for i in range(len(starts) - 1):
+            if starts[i+1] == starts[i] + 3:
+                score += 1
+    return score
+
+def score_two_terminal_chows(groups):
+    # TODO needs fixing
+    """
+    For each suit (bamboo, character, dot), if both 1‑2‑3 and 7‑8‑9 chows are present,
+    add one point.
+    """
+    score = 0
+    for suit in {"bamboo", "character", "dot"}:
+        has_low = any(g for g in groups if g[0]=="chow" and g[1]==suit and g[2]==(1,2,3))
+        has_high = any(g for g in groups if g[0]=="chow" and g[1]==suit and g[2]==(7,8,9))
+        if has_low and has_high:
+            score += 1
+    return score
+
+def score_pung_terminals_honors(groups):
+    # TODO needs fixing
+    """
+    For every pung group (three identical tiles) where the tile is a terminal (1 or 9)
+    or is an honor, add one point.
+    """
+    score = 0
+    for g in groups:
+        if g[0] == "pung":
+            if g[1] == "honor" or g[2] in (1, 9):
+                score += 1
+    return score
+
+def score_melded_kong(melds):
+    """
+    For every exposed meld that is a kong (four identical tiles), add one point.
+    """
+    score = 0
+    for meld in melds:
+        if len(meld) == 4:
+            descriptor = classify_group(meld)
+            if descriptor and descriptor[0] == "kong":
+                score += 1
+    return score
+
+def score_one_voided_suit(tiles):
+    # TODO needs fixing
+    """
+    If the complete hand (tiles from melds and concealed hand) is missing one of the three suits 
+    (bamboo, character, or dot), add one point.
+    """
+    suits = set(t.suit for t in tiles if t.suit in {"bamboo", "character", "dot"})
+    return 1 if len(suits) <= 2 else 0
+
+def score_no_honors(tiles):
+    # TODO needs fixing
+    """
+    If the complete hand contains no honor tiles, add one point.
+    """
+    return 1 if not any(t.suit == "honor" for t in tiles) else 0
+
+def score_dragon_pung(groups):
+    # TODO needs fixing
+    """
+    (Rule 14, 2 points)
+    Score 2 points for each pung or kong of Dragon tiles.
+    Assumes Dragon tiles have tile.suit == "dragon".
+    """
+    score = 0
+    for g in groups:
+        if g and g[0] in ("pung", "kong") and g[1] == "dragon":
+            score += 2
+    return score
+
+def score_seat_wind(groups, seat_wind):
+    # TODO needs fixing
+    """
+    (Rule 16, 2 points)
+    Score 2 points for each pung or kong of the player's seat wind.
+    """
+    score = 0
+    for g in groups:
+        if g and g[1] == "wind" and g[2] == seat_wind and g[0] in ("pung", "kong"):
+            score += 2
+    return score
+
+def score_prevalent_wind(groups, table_wind):
+    # TODO needs fixing
+    """
+    (Rule 15, 2 points)
+    Score 2 points for each pung of the table wind.
+    Assumes Wind tiles have suit "wind" and tile.number equals the wind value.
+    """
+    score = 0
+    for g in groups:
+        if g and g[0] == "pung" and g[1] == "wind" and g[2] == table_wind:
+            score += 2
+    return score
+
+def score_concealed_hand_bonus(melds, winning_tile_source):
+    """
+    (Rule 17, 2 points)
+    Score 2 points if the hand is completely concealed (no exposed melds)
+    and the winning tile was taken from a discard.
+    """
+    return 2 if len(melds) == 0 and winning_tile_source == "discard" else 0
+
+def score_all_chows(groups):
+    """
+    (Rule 18, 2 points)
+    Score 2 points if every group in the hand is a chow.
+    """
+    if all(g and g[0] == "chow" for g in groups):
+        return 2
+    return 0
+
+def score_tile_hog(tiles, groups):
+    """
+    (Rule 19, 2 points)
+    Score 2 points for each tile of a suited type that appears exactly 4 times in the complete hand,
+    provided that these four tiles are not declared as a kong in any group.
+    """
+    from collections import Counter
+    counter = Counter(tiles)
+    score = 0
+    for tile, cnt in counter.items():
+        if cnt == 4:
+            if not any(g and g[0] == "kong" and g[1] == tile.suit and g[2] == tile.number for g in groups):
+                score += 2
+    return score
+
+def score_double_pung(groups):
+    """
+    (Rule 20, 2 points)
+    Score 2 points for each distinct number for which there are pungs in two different suits.
+    """
+    pung_map = {}
+    for g in groups:
+        if g and g[0] == "pung":
+            pung_map.setdefault(g[2], set()).add(g[1])
+    score = 0
+    for number, suits in pung_map.items():
+        if len(suits) >= 2:
+            score += 2
+    return score
+
+def score_two_concealed_pungs(num_concealed_pungs):
+    """
+    (Rule 21, 2 points)
+    Score 2 points if there are at least two concealed pungs.
+    """
+    return 2 if num_concealed_pungs >= 2 else 0
+
+def score_all_simples(tiles):
+    """
+    (Rule 23, 2 points)
+    Score 2 points if the complete hand is formed only of simples,
+    meaning it contains no terminal (1 or 9) or honor tiles.
+    (Assumes suited tiles only for simples are in bamboo, character, or dot.)
+    """
+    for t in tiles:
+        if t.suit not in {"bamboo", "character", "dot"}:
+            return 0
+        if t.number in (1, 9):
+            return 0
+    return 2
+
+def is_outside_set(group):
+    """
+    Returns True if the given group (a list of Tile objects) contains at least one terminal (1 or 9 in suited tiles)
+    or an honor tile (any tile not in {"bamboo", "character", "dot"}).
+    """
+    for tile in group:
+        if tile.suit in {"bamboo", "character", "dot"}:
+            if tile.number in (1, 9):
+                return True
+        else:
+            return True
+    return False
+
+def score_outside_hand(concealed_groups, pair, melds):
+    """
+    (Rule 24, 4 points)
+    Score 4 points if every set of the complete hand—including each concealed group, the pair, and every exposed meld—
+    contains at least one terminal or honor tile.
+    """
+    for group in concealed_groups:
+        if not is_outside_set(group):
+            return 0
+    if not is_outside_set(pair):
+        return 0
+    for meld in melds:
+        if not is_outside_set(meld):
+            return 0
+    return 4
+
+def score_fully_concealed_hand(melds, winning_tile_source):
+    """
+    (Rule 25, 4 points)
+    Score 4 points if the hand is completely concealed (no exposed melds)
+    and the winning tile was drawn from the wall.
+    """
+    return 4 if len(melds) == 0 and winning_tile_source == "wall" else 0
+
+def score_two_melded_kongs(melds):
+    """
+    (Rule 26, 4 points)
+    Score 4 points if the hand contains at least two claimed (exposed) kongs.
+    """
+    count = 0
+    for meld in melds:
+        desc = classify_group(meld)
+        if desc and desc[0] == "kong":
+            count += 1
+    return 4 if count >= 2 else 0
+
+def score_last_tile(winning_tile, discarded_tiles, melds, winning_tile_source):
+    # TODO needs fixing
+    """
+    (Rule 27, 4 points)
+    Score 4 points if the winning tile is the last tile of its kind.
+    That is, aside from the winning tile, the other three copies of that tile are either in the discard pile
+    or used in claimed sets (melds). If the win resulted from robbing a kong (indicated by winning_tile_source),
+    no bonus is awarded.
+    """
+    if winning_tile_source == "kong_rob":
+        return 0
+    count = discarded_tiles.count(winning_tile)
+    for meld in melds:
+        count += sum(1 for t in meld if t == winning_tile)
+    return 4 if count == 3 else 0
+
+def partition_groups(tiles):
+    """
+    Recursively partitions a sorted list of tiles into groups.
+    Each group may be:
+      - a concealed kong (four identical tiles), or
+      - a pung (three identical tiles), or 
+      - a chow (three consecutive numbers in the same suit; honors cannot form chows).
+    """
+    if not tiles:
+        return [[]]
+    
+    partitions = []
+    first = tiles[0]
+    
+    # Option 1: Try a pung (group of 3 identical tiles)
+    if tiles.count(first) >= 3:
+        new_tiles = list(tiles)
+        for _ in range(3):
+            new_tiles.remove(first)
+        for sub in partition_groups(new_tiles):
+            partitions.append([[first, first, first]] + sub)
+            
+    # Option 2: Try a chow (only for suited tiles that are not honors, and where first.number <= 7)
+    if first.suit in {"bamboo", "character", "dot"} and first.number <= 7:
+        needed1 = Tile(first.suit, first.number + 1)
+        needed2 = Tile(first.suit, first.number + 2)
+        if needed1 in tiles and needed2 in tiles:
+            new_tiles = list(tiles)
+            new_tiles.remove(first)
+            new_tiles.remove(needed1)
+            new_tiles.remove(needed2)
+            for sub in partition_groups(new_tiles):
+                partitions.append([[first, needed1, needed2]] + sub)
+    
+    return partitions
+
+def classify_group(group):
+    """
+    Given a group (a list of tile objects), classify it as one of:
+      - ("chow", suit, (a, a+1, a+2))
+      - ("pung", suit, number)
+      - ("kong", suit, number)
+    Returns None if the group is invalid.
+    """
+    if len(group) == 3:
+        # All tiles must have the same suit.
+        if group[0].suit == group[1].suit == group[2].suit:
+            # Check for pung (three identical tiles)
+            if group[0] == group[1] and group[1] == group[2]:
+                return ("pung", group[0].suit, group[0].number)
+            else:
+                # Check for chow (three consecutive numbers)
+                nums = sorted([t.number for t in group])
+                if nums[0] + 1 == nums[1] and nums[1] + 1 == nums[2]:
+                    return ("chow", group[0].suit, tuple(nums))
+    elif len(group) == 4:
+        # Check for kong (four identical tiles)
+        if (group[0].suit == group[1].suit == group[2].suit == group[3].suit and
+            group[0] == group[1] == group[2] == group[3]):
+            return ("kong", group[0].suit, group[0].number)
+    return None
+
 """ Scoring functions for different types of winning hands """
 
-def score_standard_win(melds, hand):
-    # Calculate the score for a 4 melds and a pair hand
-    return 10
+def score_standard_win(melds, hand, winning_tile_source, table_wind, seat_wind, last_tile, extra_points):
+    # TODO handle wait patterns (9,10,11) , conceled kongs (22)
+    """
+    Score a standard winning mahjong hand.
+
+    Parameters:
+      - melds: a list of exposed melds (each meld is a list of Tile objects forming a set).
+      - hand: a list of concealed Tile objects.
+      - winning_tile_source: a string indicating the source of the winning tile.
+          If "wall", the winning tile was drawn from the wall (self-drawn);
+          if "discard", it was picked up from another player's discard.
+      - table_wind: the table (round’s) wind tile (e.g. "east", "south", etc.)
+      - seat_wind: the player's seat wind (e.g. "east", "south", etc.)
+
+    (Note: Wait pattern bonuses are omitted here because no wait type is provided.)
+    """
+    # Validate the concealed hand tile count.
+    num_exposed_groups = len(melds)  # Each meld counts as one group.
+    concealed_needed_groups = 4 - num_exposed_groups
+    expected_concealed_tiles = 3 * concealed_needed_groups + 2
+    if len(hand) != expected_concealed_tiles:
+        raise ValueError(f"Concealed hand should have {expected_concealed_tiles} tiles, got {len(hand)}.")
+    
+    partitions = partition_concealed_hand(hand)
+    if not partitions:
+        raise ValueError("No valid partition found for the concealed hand.")
+    
+    best_score = -float('inf')
+    for part in partitions:
+        concealed_groups = part['groups']
+        pair = part['pair']  # The pair is available for wait patterns if needed.
+        
+        # Keep concealed and meld groups separate for later bonuses.
+        concealed_descriptors = [classify_group(g) for g in concealed_groups]
+        meld_descriptors = [classify_group(m) for m in melds]
+        all_groups = meld_descriptors + concealed_descriptors
+        
+        # 1 point rules
+        score = 0
+        score += score_pure_double_chow(all_groups)
+        score += score_mixed_double_chow(all_groups)
+        score += score_short_straight(all_groups)
+        score += score_two_terminal_chows(all_groups)
+        score += score_pung_terminals_honors(all_groups)
+        # Score exposed melds for melded kong.
+        score += score_melded_kong(melds)
+        
+        # Score whole-hand patterns.
+        full_tiles = []
+        for meld in melds:
+            full_tiles.extend(meld)
+        full_tiles.extend(hand)
+        score += score_one_voided_suit(full_tiles)
+        score += score_no_honors(full_tiles)
+        
+        # Score self-drawn win.
+        if winning_tile_source == "wall":
+            score += 1
+
+        # 2 point rules
+        score += score_dragon_pung(all_groups)
+        score += score_prevalent_wind(all_groups, table_wind)
+        score += score_seat_wind(all_groups, seat_wind)
+        score += score_concealed_hand_bonus(melds, winning_tile_source)
+        score += score_all_chows(all_groups)
+        score += score_tile_hog(full_tiles, all_groups)
+        score += score_double_pung(all_groups)
+
+        # Count concealed pungs (only those from concealed groups)
+        num_concealed_pungs = sum(1 for desc in concealed_descriptors if desc and desc[0] == "pung")
+        score += score_two_concealed_pungs(num_concealed_pungs)
+        score += score_all_simples(full_tiles)
+
+        # 4 point rules
+        score += score_outside_hand(concealed_groups, pair, melds)
+        score += score_fully_concealed_hand(melds, winning_tile_source)
+        score += score_two_melded_kongs(melds)
+        score += score_last_tile(winning_tile, discarded_tiles, melds, winning_tile_source)
+        
+        best_score = max(best_score, score)
+    
+    return best_score
+
 
 def score_seven_pairs(hand):
     # Calculate the score for a 7 pairs hand
