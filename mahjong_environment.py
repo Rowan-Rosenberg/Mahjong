@@ -5,6 +5,7 @@
 
 from enum import Enum
 import random
+from collections import Counter
 
 """ Tiles """
 
@@ -418,7 +419,6 @@ def score_tile_hog(tiles, groups):
     Score 2 points for each tile of a suited type that appears exactly 4 times in the complete hand,
     provided that these four tiles are not declared as a kong in any group.
     """
-    from collections import Counter
     counter = Counter(tiles)
     score = 0
     for tile, cnt in counter.items():
@@ -528,6 +528,33 @@ def score_last_tile(winning_tile, discarded_tiles, melds, winning_tile_source):
         count += sum(1 for t in meld if t == winning_tile)
     return 4 if count == 3 else 0
 
+def partition_concealed_hand(hand):
+    """
+    Given the concealed hand (a list of Tile objects), partition it into one pair and groups of three.
+    Returns a list of partitions; each partition is a dictionary with keys:
+      - 'pair': the pair (list of 2 Tile objects)
+      - 'groups': a list of groups (each group is a list of 3 Tile objects).
+    """
+    sorted_hand = sorted(hand, key=lambda t: (t.suit, t.number))
+    partitions = []
+    n = len(sorted_hand)
+    
+    # Try every possible pair candidate.
+    for i in range(n - 1):
+        # Skip duplicate candidates.
+        if i > 0 and sorted_hand[i] == sorted_hand[i-1]:
+            continue
+        for j in range(i+1, n):
+            if sorted_hand[i] == sorted_hand[j]:
+                pair = [sorted_hand[i], sorted_hand[j]]
+                remaining = [sorted_hand[k] for k in range(n) if k not in (i, j)]
+                groups_partitions = partition_groups(remaining)
+                for gp in groups_partitions:
+                    partitions.append({'pair': pair, 'groups': gp})
+                break  # Only one instance of the pair is needed.
+    return partitions
+
+
 def partition_groups(tiles):
     """
     Recursively partitions a sorted list of tiles into groups.
@@ -592,7 +619,7 @@ def classify_group(group):
 
 """ Scoring functions for different types of winning hands """
 
-def score_standard_win(melds, hand, winning_tile_source, table_wind, seat_wind, last_tile, extra_points):
+def score_standard_win(melds, hand, discarded_tiles, winning_tile, winning_tile_source, table_wind, seat_wind, extra_points):
     # TODO handle wait patterns (9,10,11) , conceled kongs (22)
     """
     Score a standard winning mahjong hand.
@@ -619,7 +646,6 @@ def score_standard_win(melds, hand, winning_tile_source, table_wind, seat_wind, 
     if not partitions:
         raise ValueError("No valid partition found for the concealed hand.")
     
-    best_score = -float('inf')
     for part in partitions:
         concealed_groups = part['groups']
         pair = part['pair']  # The pair is available for wait patterns if needed.
@@ -671,9 +697,10 @@ def score_standard_win(melds, hand, winning_tile_source, table_wind, seat_wind, 
         score += score_two_melded_kongs(melds)
         score += score_last_tile(winning_tile, discarded_tiles, melds, winning_tile_source)
         
-        best_score = max(best_score, score)
-    
-    return best_score
+        # Extra points
+        score += extra_points
+        
+    return score
 
 
 def score_seven_pairs(hand):
