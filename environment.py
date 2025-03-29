@@ -57,9 +57,9 @@ def kong_options(hand):
     # Check if player can kong from hand, returns list of tiles that can be konged
     options = []
     for tile in hand:
-        if hand.count(tile) == 3:
+        if hand.count(tile) == 4 and tile not in options:
             options.append(tile)
-    return []
+    return options
 
 def kong_onto_meld_options(hand, melds):
     # Check if player can kong onto exposed pong, returns list of tiles that can be konged
@@ -68,10 +68,9 @@ def kong_onto_meld_options(hand, melds):
         type, meld_tile = classify_meld(meld)
         if type == 0:
             for tile in hand:
-                if meld_tile == tile:
+                if meld_tile == tile and tile not in options:
                     options.append(tile)
-    
-    return []
+    return options
 
 def partition_tiles(hand):
     # Divides the hand into sets and eyes
@@ -95,136 +94,248 @@ def partition_tiles(hand):
         sets = [[eye,eye]]
         if not hand:
             return sets
-        sub_hand = hand[:]
-        sub_hand.sort()
-        # Must make sets of 3
-        if len(sub_hand) % 3 != 0:
+        
+        if len(hand) % 3 != 0:
             return []
-        # Try to remove all tiles as sets
-        can_pong = can_chow = False
-        # See if pong can be removed
-        for tile in sub_hand:
-            if sub_hand.count(tile) >= 3:
-                can_pong = True
-                break
         
-        # See if chow can be removed
-        for tile in sub_hand:
-            if tile.suit < 4 and Tile(tile.suit,tile.number+1) in sub_hand and Tile(tile.suit,tile.number+2) in sub_hand:
-                can_chow = True
-                break
-
-        # If only one remove as many as possible
-        # If three sets just choose pong, because result is same, if fewer then can't do both
-        if can_pong and (not can_chow or len(sub_hand) / 3 == 3):
-            for _ in range(len(hand) // 3):
-                if(sub_hand.count(sub_hand[0]) >= 3):
-                        sets.append([sub_hand[0],sub_hand[0],sub_hand[0]])
-                        sub_hand.remove(sub_hand[0])
-                        sub_hand.remove(sub_hand[0])
-                        sub_hand.remove(sub_hand[0])
-
-        elif can_chow and not can_pong:
-            for _ in range(len(hand) // 3):
-                tile = sub_hand[0]
-                if(tile.suit < 4 and Tile(tile.suit, tile.number+1) in sub_hand and  Tile(tile.suit, tile.number+2) in sub_hand):
-                    sets.append([tile,Tile(tile.suit, tile.number+1),Tile(tile.suit, tile.number+2)])
-                    sub_hand.remove(tile)
-                    sub_hand.remove(Tile(tile.suit, tile.number+1))
-                    sub_hand.remove(Tile(tile.suit, tile.number+2))
-
+        num_sets = len(hand)//3
+        hand.sort()
         
-        # If both possible for 4 sets, try both
-        elif can_chow and can_pong and len(hand) / 3 == 4:
+        # Start recursive partitioning 
+        match num_sets:
 
-            # Make pong first, then perform process for 3 sets
-            for tile in sub_hand:
-                if(sub_hand.count(tile) >= 3):
-                    sets.append([tile,tile,tile])
-                    sub_hand.remove(tile)
-                    sub_hand.remove(tile)
-                    sub_hand.remove(tile)
-                    break
+            case 1:
+                new_sets = _one_set(hand)
+            case 2:
+                new_sets = _two_sets(hand)
+            case 3:
+                new_sets = _three_sets(hand)
+            case 4:
+                new_sets = _four_sets(hand)
 
-            can_pong = can_chow = False
-            # See if more pongs can be removed
-            for tile in sub_hand:
-                if sub_hand.count(tile) == 3:
-                    can_pong = True
-                    break
-            # See if chow can be removed
-            for tile in sub_hand:
-                if tile.suit < 4 and Tile(tile.suit,tile.number+1) in sub_hand and Tile(tile.suit,tile.number+2) in sub_hand:
-                    can_chow = True
-                    break
-
-            # Pong if possible because there are 3 sets, otherwise chow
-            # Subtract 1 to compensate for removed set
-            if can_pong:
-                for _ in range((len(hand) // 3) - 1):
-                    if(sub_hand.count(sub_hand[0]) >= 3):
-                            sets.append([sub_hand[0],sub_hand[0],sub_hand[0]])
-                            sub_hand.remove(sub_hand[0])
-                            sub_hand.remove(sub_hand[0])
-                            sub_hand.remove(sub_hand[0])
-
-            elif can_chow:
-                for _ in range((len(hand) // 3) -1):
-                    tile = sub_hand[0]
-                    if(tile.suit < 4 and Tile(tile.suit, tile.number+1) in sub_hand and  Tile(tile.suit, tile.number+2) in sub_hand):
-                        sets.append([tile,Tile(tile.suit, tile.number+1),Tile(tile.suit, tile.number+2)])
-                        sub_hand.remove(tile)
-                        sub_hand.remove(Tile(tile.suit, tile.number+1))
-                        sub_hand.remove(Tile(tile.suit, tile.number+2))
-            
-            # If this fails reset and try a chow
-            sub_hand = hand[:]
-            sets = []
-            sub_hand.sort()
-            for tile in sub_hand:
-                if(tile.suit < 4 and Tile(tile.suit, tile.number+1) in sub_hand and  Tile(tile.suit, tile.number+2) in sub_hand):
-                    sets.append([tile,Tile(tile.suit, tile.number+1),Tile(tile.suit, tile.number+2)])
-                    sub_hand.remove(tile)
-                    sub_hand.remove(Tile(tile.suit, tile.number+1))
-                    sub_hand.remove(Tile(tile.suit, tile.number+2))
-                    break
-
-            can_pong = can_chow = False
-            # See if pongs can be removed
-            for tile in sub_hand:
-                if sub_hand.count(tile) >= 3:
-                    can_pong = True
-                    break
-            # See if more chows can be removed
-            for tile in sub_hand:
-                if tile.suit < 4 and Tile(tile.suit,tile.number+1) in sub_hand and Tile(tile.suit,tile.number+2) in sub_hand:
-                    can_chow = True
-                    break
-
-            # Pong if possible because there are 3 sets, otherwise chow
-            # Subtract 1 to compensate for removed set
-            if can_pong:
-                for _ in range((len(hand) // 3) - 1):
-                    if(sub_hand.count(sub_hand[0]) >= 3):
-                            sets.append([sub_hand[0],sub_hand[0],sub_hand[0]])
-                            sub_hand.remove(sub_hand[0])
-                            sub_hand.remove(sub_hand[0])
-                            sub_hand.remove(sub_hand[0])
-
-            elif can_chow:
-                for _ in range((len(hand) // 3) -1):
-                    tile = sub_hand[0]
-                    if(tile.suit < 4 and Tile(tile.suit, tile.number+1) in sub_hand and  Tile(tile.suit, tile.number+2) in sub_hand):
-                        sets.append([tile,Tile(tile.suit, tile.number+1),Tile(tile.suit, tile.number+2)])
-                        sub_hand.remove(tile)
-                        sub_hand.remove(Tile(tile.suit, tile.number+1))
-                        sub_hand.remove(Tile(tile.suit, tile.number+2))
-
-        # Check for success
-        if (len(sets) - 1) * 3 == len(hand):
+        sets += new_sets
+        # Check if everything was used as a set
+        if len(new_sets) == num_sets:
             return sets
 
     # Empty return upon failiure 
+    return []
+
+def _one_set(hand):
+        
+    temp = hand[:]
+    new_sets = []
+    can_pong = can_chow = False
+    # See if pong can be removed
+    for tile in temp:
+        if temp.count(tile) >= 3:
+            can_pong = True
+            break
+        
+    # See if chow can be removed
+    for tile in temp:
+        if tile.suit < 4 and Tile(tile.suit,tile.number+1) in temp and Tile(tile.suit,tile.number+2) in temp:
+            can_chow = True
+            break
+    
+
+    # Remove whichever is possible (can only be one)
+    if can_pong:
+        new_sets.append([temp[0],temp[0],temp[0]])
+        temp.remove(temp[0])
+        temp.remove(temp[0])
+        temp.remove(temp[0])
+
+    elif can_chow:
+        tile = temp[0]
+        new_sets.append([tile,Tile(tile.suit, tile.number+1),Tile(tile.suit, tile.number+2)])
+        temp.remove(tile)
+        temp.remove(Tile(tile.suit, tile.number+1))
+        temp.remove(Tile(tile.suit, tile.number+2))
+
+    return new_sets
+
+def _two_sets(hand):
+
+    temp = hand[:]
+    new_sets = []
+    can_pong = can_chow = False
+    # See if pong can be removed
+    for tile in temp:
+        if temp.count(tile) >= 3:
+            can_pong = True
+            break
+        
+    # See if chow can be removed
+    for tile in temp:
+        if tile.suit < 4 and Tile(tile.suit,tile.number+1) in temp and Tile(tile.suit,tile.number+2) in temp:
+            can_chow = True
+            break
+
+    # Remove pong first if both possible (ensures soundness)
+    if can_pong:
+        for tile in temp:
+            if temp.count(tile) >= 3:
+                new_sets.append([tile,tile,tile])
+                temp.remove(tile)
+                temp.remove(tile)
+                temp.remove(tile)
+                break
+    # Remove chow if no pong
+    elif can_chow:
+        for tile in temp:
+            if tile.suit < 4 and Tile(tile.suit, tile.number+1) in temp and Tile(tile.suit, tile.number+2) in temp:
+                new_sets.append([tile,Tile(tile.suit, tile.number+1),Tile(tile.suit, tile.number+2)])
+                temp.remove(tile)
+                temp.remove(Tile(tile.suit, tile.number+1))
+                temp.remove(Tile(tile.suit, tile.number+2))
+
+    return new_sets + _one_set(temp)
+
+def _three_sets(hand):
+
+    temp = hand[:]
+    new_sets = []
+    can_pong = can_chow = False
+    # See if pong can be removed
+    for tile in temp:
+        if temp.count(tile) >= 3:
+            can_pong = True
+            break
+        
+    # See if chow can be removed
+    for tile in temp:
+        if tile.suit < 4 and Tile(tile.suit,tile.number+1) in temp and Tile(tile.suit,tile.number+2) in temp:
+            can_chow = True
+            break
+    
+    # If only one can be removed, remove and recurse
+    if can_pong and not can_chow:
+        for tile in temp:
+            if temp.count(tile) >= 3:
+                new_sets.append([tile,tile,tile])
+                temp.remove(tile)
+                temp.remove(tile)
+                temp.remove(tile)
+                break
+        return new_sets + _two_sets(temp)
+    
+    # Remove chow if no pong
+    elif can_chow and not can_pong:
+        for tile in temp:
+            if tile.suit < 4 and Tile(tile.suit, tile.number+1) in temp and Tile(tile.suit, tile.number+2) in temp:
+                new_sets.append([tile,Tile(tile.suit, tile.number+1),Tile(tile.suit, tile.number+2)])
+                temp.remove(tile)
+                temp.remove(Tile(tile.suit, tile.number+1))
+                temp.remove(Tile(tile.suit, tile.number+2))
+        return new_sets + _two_sets(temp)
+    
+    # If both possible, try both
+    elif can_pong and can_chow:
+        
+        # Try ponging
+        for tile in temp:
+            if temp.count(tile) >= 3:
+                new_sets.append([tile,tile,tile])
+                temp.remove(tile)
+                temp.remove(tile)
+                temp.remove(tile)
+                break
+        new_sets +=  _two_sets(temp)
+
+        # Check success
+        if len(new_sets) == len(hand)/3:
+            return new_sets
+        
+        # Reset and try chow
+        temp = hand[:]
+        new_sets = []
+        
+        for tile in temp:
+            if tile.suit < 4 and Tile(tile.suit, tile.number+1) in temp and Tile(tile.suit, tile.number+2) in temp:
+                new_sets.append([tile,Tile(tile.suit, tile.number+1),Tile(tile.suit, tile.number+2)])
+                temp.remove(tile)
+                temp.remove(Tile(tile.suit, tile.number+1))
+                temp.remove(Tile(tile.suit, tile.number+2))
+        new_sets += _two_sets(temp)
+
+        # Check success
+        if len(new_sets) == len(hand)/3:
+            return new_sets
+
+    return []
+
+def _four_sets(hand):
+
+    temp = hand[:]
+    new_sets = []
+    can_pong = can_chow = False
+    # See if pong can be removed
+    for tile in temp:
+        if temp.count(tile) >= 3:
+            can_pong = True
+            break
+        
+    # See if chow can be removed
+    for tile in temp:
+        if tile.suit < 4 and Tile(tile.suit,tile.number+1) in temp and Tile(tile.suit,tile.number+2) in temp:
+            can_chow = True
+            break
+
+    # If only one can be removed, remove and recurse
+    if can_pong and not can_chow:
+        for tile in temp:
+            if temp.count(tile) >= 3:
+                new_sets.append([tile,tile,tile])
+                temp.remove(tile)
+                temp.remove(tile)
+                temp.remove(tile)
+                break
+        return new_sets + _three_sets(temp)
+    
+    # Remove chow if no pong
+    elif can_chow and not can_pong:
+        for tile in temp:
+            if tile.suit < 4 and Tile(tile.suit, tile.number+1) in temp and Tile(tile.suit, tile.number+2) in temp:
+                new_sets.append([tile,Tile(tile.suit, tile.number+1),Tile(tile.suit, tile.number+2)])
+                temp.remove(tile)
+                temp.remove(Tile(tile.suit, tile.number+1))
+                temp.remove(Tile(tile.suit, tile.number+2))
+        return new_sets + _three_sets(temp)
+    
+    # If both possible, try both
+    elif can_pong and can_chow:
+        
+        # Try ponging
+        for tile in temp:
+            if temp.count(tile) >= 3:
+                new_sets.append([tile,tile,tile])
+                temp.remove(tile)
+                temp.remove(tile)
+                temp.remove(tile)
+                break
+        new_sets +=  _three_sets(temp)
+
+        # Check success
+        if len(new_sets) == len(hand)/3:
+            return new_sets
+        
+        # Reset and try chow
+        temp = hand[:]
+        new_sets = []
+        
+        for tile in temp:
+            if tile.suit < 4 and Tile(tile.suit, tile.number+1) in temp and Tile(tile.suit, tile.number+2) in temp:
+                new_sets.append([tile,Tile(tile.suit, tile.number+1),Tile(tile.suit, tile.number+2)])
+                temp.remove(tile)
+                temp.remove(Tile(tile.suit, tile.number+1))
+                temp.remove(Tile(tile.suit, tile.number+2))
+        new_sets += _three_sets(temp)
+
+        # Check success
+        if len(new_sets) == len(hand)/3:
+            return new_sets
+
     return []
 
 def classify_meld(meld):
@@ -355,12 +466,12 @@ class Environment:
             
         # Player could have 0-3 ways to kong from hand (options 14-16), needs additional tile from wall
         if kong_options(self.hands[self.current_player]) and len(self.wall) > 0:
-            for i, option in enumerate( kong_options(self.hands[self.current_player]) ):
+            for i in range(len((kong_options(self.hands[self.current_player])))):
                 options.append(14 + i)
         # Player could kong onto exposed pong (option 17-18), needs additional tile from wall
         if kong_onto_meld_options(self.hands[self.current_player], self.melds[self.current_player]) and len(self.wall) > 0:
-            for i, option in enumerate( kong_onto_meld_options(self.hands[self.current_player], self.melds[self.current_player]) ):
-                options.append(17 + option)
+            for i in range(len(kong_onto_meld_options(self.hands[self.current_player], self.melds[self.current_player]))):
+                options.append(17 + i)
         # Player may be able to win (option 19)
         if score(self.hands[self.current_player], self.melds[self.current_player]) >= 8:
             options.append(19)
@@ -391,12 +502,11 @@ class Environment:
             options = kong_onto_meld_options(self.hands[self.current_player], self.melds[self.current_player])
             tile = options[choice - 17]
             # Add to melds and remove from hand
-            # TODO Fix when melds properly implemented
             for meld in self.melds[self.current_player]:
                 type, first_tile = classify_meld(meld) 
                 # Check if pung of the same tile, then add
                 if type == 0 and first_tile == tile:
-                    meld += tile
+                    meld.append(tile)
             self.hands[self.current_player].remove(tile)
             # Get tile from start of wall
             self.hands[self.current_player].append(self.wall.pop(0))
@@ -405,7 +515,7 @@ class Environment:
 
         elif choice == 19:
             # Win, self pickup
-            print("Player " + str(self.current_player) + " wins")
+            print("Player " + str(self.current_player) + " wins from wall")
             return (False, self.calculate_rewards(1, score(self.hands[self.current_player], self.melds[self.current_player])))
         
     def post_discard(self):
@@ -450,7 +560,7 @@ class Environment:
                 # Win
                 discarder = self.current_player
                 self.current_player = (self.current_player + i) % 4
-                print("Player " + str(self.current_player) + " wins")
+                print("Player " + str(self.current_player) + " wins off discard")
                 return (False, self.calculate_rewards(2, score(self.hands[self.current_player], self.melds[self.current_player]), discarder))
             
         for i in range(1, 5):
@@ -519,6 +629,25 @@ class Environment:
                 break   
         return rewards
     
+def part_test():
+
+    hand = [
+        Tile(1,3), Tile(1,3), Tile(1,3),
+        Tile(1,2), Tile(1,4), Tile(1,1),
+        Tile(1,2), Tile(1,4), Tile(1,5),
+        Tile(4,3), Tile(4,4), Tile(4,5),
+        Tile(1,1), Tile(1,1)
+        ]
+    
+    parts = partition_tiles(hand)
+
+    for part in parts:
+        print("\nGroup")
+        for tile in part:
+            print(tile, end = "; ")
+
+    print("\nDone")
+
 def simulate_iterations(iterations):
     # Create a new instance of Environment for this process
     env = Environment()
@@ -527,6 +656,7 @@ def simulate_iterations(iterations):
     for _ in range(iterations):
         rewards = env.play_game()
         if rewards != [-0.1, -0.1, -0.1, -0.1]:
+            #env.print_state()
             wins += 1
         total_discards += len(env.discards)
     return wins, total_discards / iterations
@@ -554,7 +684,7 @@ def main_multiprocess():
 def main():
     
     env = Environment()
-    itterations = 100000
+    itterations = 1000
     wins = discards = 0
     for _ in range(itterations):
         if env.play_game() != [-0.1, -0.1, -0.1, -0.1]:
@@ -570,3 +700,5 @@ def main():
 
 if __name__ == "__main__":
     main_multiprocess()
+    #main()
+    #part_test()
