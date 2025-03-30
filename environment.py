@@ -7,8 +7,8 @@
 import concurrent.futures
 from enum import Enum
 import random
-from itertools import combinations
 import neural
+import numpy as np
 
 class Tile():
     # Represents tiles, with a suit and a number
@@ -431,13 +431,29 @@ class Environment:
         in hand                      own number
         own melds                    hand wind
         melds of next                round wind
-        .... x2                      0, 0                
-        discards                     0
-        last discard (one hot)       0
-        
+        .... x2                                  
+        discards                     
+        last discard (one hot)
+        1-241 positions with value 0-4
         """
-        state = []
+        state = np.zeros(242)
 
+        for tile in self.hands[player]:
+            state[tile.position()] += 1 
+
+        for i in range(4):
+            for meld in self.melds[(player + i) % 4]:
+                for tile in meld:
+                    state[34 * (i + 1) + tile.position()] += 1 
+
+        for tile in self.discards:
+            state[170 + tile.position()] += 1 
+
+        if self.discards:
+            state[204 + self.discards[-1].position()]
+        state[239] = player
+        state[240] = self.hand_wind
+        state[241] = self.round_wind
 
         return state
 
@@ -675,10 +691,11 @@ class Environment:
 def simulate_iterations(iterations):
     # Create a new instance of Environment for this process
     env = Environment()
+    agent = neural.Agent()
     wins = 0
     total_discards = 0
     for _ in range(iterations):
-        rewards = env.play_game()
+        rewards = env.play_game(agent)
         if rewards != [-0.1, -0.1, -0.1, -0.1]:
             #env.print_state()
             wins += 1
@@ -724,5 +741,5 @@ def main():
     print(discards)
 
 if __name__ == "__main__":
-    #main_multiprocess()
-    main()
+    main_multiprocess()
+    #main()
