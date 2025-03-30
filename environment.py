@@ -8,6 +8,7 @@ import concurrent.futures
 from enum import Enum
 import random
 from itertools import combinations
+import neural
 
 class Tile():
     # Represents tiles, with a suit and a number
@@ -28,6 +29,22 @@ class Tile():
     
     def __hash__(self):
         return hash((self.suit, self.number))
+    
+    def position(self):
+        
+        match self.suit:
+            case 1:
+                return self.number
+            case 2:
+                return 9 + self.number
+            case 3:
+                return 18 + self.number
+            case 4:
+                return 27 + self.number
+            case 5:
+                return 31 + self.number
+            case _:
+                return -1
     
 class TileType(Enum):
     B = 1
@@ -407,9 +424,22 @@ class Environment:
             self.round_wind = (self.round_wind + 1) % 4
         self.hand_wind = (self.hand_wind + 1) % 4
 
-    def encode_state():
+    def encode_state(self, player):
+        """
+        State   Tile1 ....... TileN  Extra
+        
+        in hand                      own number
+        own melds                    hand wind
+        melds of next                round wind
+        .... x2                      0, 0                
+        discards                     0
+        last discard (one hot)       0
+        
+        """
+        state = []
 
-        return
+
+        return state
 
     def print_state(self, player = -1):
         # Prints the game state, includes info for all players unless specified
@@ -461,7 +491,7 @@ class Environment:
                 return rewards
         return [0,0,0,0]
 
-    def play_turn(self, picked_up = False):
+    def play_turn(self, agent, picked_up = False):
         # The current player plays a turn, returns rewards if the game is over and whether the player has picked up
         # Player choses from options 0-13 Discard, 14-16 Kong, 17-18 19 Win
         if len(self.wall) == 0:
@@ -489,7 +519,8 @@ class Environment:
 
         # Make decision (0-19 relevant)
         # TODO Implement Agent
-        choice = random.choice(options)
+        choice = agent.choose(self.encode_state(self.current_player), options, self.current_player) 
+        # choice = random.choice(options)
         if choice < 14:
             # Discard a tile
             self.discards.append(self.hands[self.current_player].pop(choice))
@@ -529,7 +560,7 @@ class Environment:
             print("Player " + str(self.current_player) + " wins from wall")
             return (False, self.calculate_rewards(1, score(self.hands[self.current_player], self.melds[self.current_player], self.round_wind, self.hand_wind)))
         
-    def post_discard(self):
+    def post_discard(self, agent):
         # Player has discarded a tile, other players have option to pong, chow, kong, or win
         player_options = [[-1], [-1], [-1], [-1]] # -1 for no action, 19 for win, 20 for pong, 21 for kong, 22-24 for chows
         # Check win off discard
@@ -562,7 +593,8 @@ class Environment:
         
         for player in range(4):
             # TODO Implement Agent
-            player_choices[player] = random.choice(player_options[player])
+            player_choices[player] = agent.choose(self.encode_state(player), player_options[player], player) 
+            #player_choices[player] = random.choice(player_options[player])
             #print("Player " + str(player) + " chose option: " + str(player_choices[player]))
             
         # Implement decisions based on priority (from right of discarder if tie)
@@ -622,19 +654,19 @@ class Environment:
 
         return (False, [])
     
-    def play_game(self):
+    def play_game(self, agent):
         # Play a full game of mahjong
         self.reset()
         picked_up = False
         while True:
             # Play a turn
-            picked_up, rewards = self.play_turn(picked_up)
+            picked_up, rewards = self.play_turn(agent, picked_up)
             # Check if game is over
             if rewards:
                 break   
             elif not picked_up:
                 # Post discard actions, skip if player has picked up
-                picked_up, rewards = self.post_discard()
+                picked_up, rewards = self.post_discard(agent)
             # Check again if game is over
             if rewards:
                 break   
@@ -676,10 +708,11 @@ def main_multiprocess():
 def main():
     
     env = Environment()
+    agent = neural.Agent()
     itterations = 1000
     wins = discards = 0
     for _ in range(itterations):
-        if env.play_game() != [-0.1, -0.1, -0.1, -0.1]:
+        if env.play_game(agent) != [-0.1, -0.1, -0.1, -0.1]:
             wins += 1
         discards += len(env.discards)
     discards = discards / itterations
