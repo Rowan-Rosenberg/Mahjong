@@ -353,8 +353,8 @@ def classify_meld(meld):
 
     return (type, first_tile)
 
-def score(hand, melds):
-    # TODO Implement full rules
+def score(hand, melds, round_wind, hand_wind):
+    # TODO Implement full rules including winds
     sets = partition_tiles(hand)
     if not sets:
         # Hand can not be made into sets and eyes
@@ -386,6 +386,8 @@ class Environment:
         self.current_player = 0
         self.last_discarding_player = -1
         self.wining_player = -1
+        self.round_wind = 0
+        self.hand_wind = 0
 
     def reset(self):
         # Clear the environment for a new game
@@ -399,6 +401,15 @@ class Environment:
         self.discards = []
         self.melds = [[], [], [], []]
         self.current_player = 0
+
+        # Rotate Winds
+        if self.hand_wind == 3:
+            self.round_wind = (self.round_wind + 1) % 4
+        self.hand_wind = (self.hand_wind + 1) % 4
+
+    def encode_state():
+
+        return
 
     def print_state(self, player = -1):
         # Prints the game state, includes info for all players unless specified
@@ -473,7 +484,7 @@ class Environment:
             for i in range(len(kong_onto_meld_options(self.hands[self.current_player], self.melds[self.current_player]))):
                 options.append(17 + i)
         # Player may be able to win (option 19)
-        if score(self.hands[self.current_player], self.melds[self.current_player]) >= 8:
+        if score(self.hands[self.current_player], self.melds[self.current_player], self.round_wind, self.hand_wind) >= 8:
             options.append(19)
 
         # Make decision (0-19 relevant)
@@ -516,14 +527,14 @@ class Environment:
         elif choice == 19:
             # Win, self pickup
             print("Player " + str(self.current_player) + " wins from wall")
-            return (False, self.calculate_rewards(1, score(self.hands[self.current_player], self.melds[self.current_player])))
+            return (False, self.calculate_rewards(1, score(self.hands[self.current_player], self.melds[self.current_player], self.round_wind, self.hand_wind)))
         
     def post_discard(self):
         # Player has discarded a tile, other players have option to pong, chow, kong, or win
         player_options = [[-1], [-1], [-1], [-1]] # -1 for no action, 19 for win, 20 for pong, 21 for kong, 22-24 for chows
         # Check win off discard
         for player in range(4):
-            if score(self.hands[player] + [self.discards[-1]], self.melds[player]) >= 8:
+            if score(self.hands[player] + [self.discards[-1]], self.melds[player], self.round_wind, self.hand_wind) >= 8:
                 player_options[player] += [19]
         # Check Pong
         for player in range(4):
@@ -561,7 +572,7 @@ class Environment:
                 discarder = self.current_player
                 self.current_player = (self.current_player + i) % 4
                 print("Player " + str(self.current_player) + " wins off discard")
-                return (False, self.calculate_rewards(2, score(self.hands[self.current_player], self.melds[self.current_player]), discarder))
+                return (False, self.calculate_rewards(2, score(self.hands[self.current_player], self.melds[self.current_player], self.round_wind, self.hand_wind), discarder))
             
         for i in range(1, 5):
             player = (self.current_player + i) % 4
@@ -628,25 +639,6 @@ class Environment:
             if rewards:
                 break   
         return rewards
-    
-def part_test():
-
-    hand = [
-        Tile(1,3), Tile(1,3), Tile(1,3),
-        Tile(1,2), Tile(1,4), Tile(1,1),
-        Tile(1,2), Tile(1,4), Tile(1,5),
-        Tile(4,3), Tile(4,4), Tile(4,5),
-        Tile(1,1), Tile(1,1)
-        ]
-    
-    parts = partition_tiles(hand)
-
-    for part in parts:
-        print("\nGroup")
-        for tile in part:
-            print(tile, end = "; ")
-
-    print("\nDone")
 
 def simulate_iterations(iterations):
     # Create a new instance of Environment for this process
@@ -699,6 +691,5 @@ def main():
     print(discards)
 
 if __name__ == "__main__":
-    main_multiprocess()
-    #main()
-    #part_test()
+    #main_multiprocess()
+    main()
