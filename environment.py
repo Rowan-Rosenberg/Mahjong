@@ -4,10 +4,9 @@
 """
 
 #TODO: Implement agent, implement full scoring
-import concurrent.futures
+
 from enum import Enum
 import random
-import neural
 import numpy as np
 
 class Tile():
@@ -497,19 +496,19 @@ class Environment:
             case 1:
                 # Current player wins from wall, reward current player double, punish others
                 rewards = [-0.5,-0.5,-0.5,-0.5]
-                rewards[self.current_player] = score / 5
+                rewards[self.current_player] = score
                 return rewards
             case 2:
                 # Current player wins from discard, reward current player, punish others, mainly discarding
                 rewards = [-0.25,-0.25,-0.25,-0.25]
-                rewards[self.current_player] = score / 10 
-                rewards[discarder] = -score / 10 
+                rewards[self.current_player] = score 
+                rewards[discarder] = -score
                 return rewards
         return [0,0,0,0]
 
     def play_turn(self, agent, picked_up = False):
         # The current player plays a turn, returns rewards if the game is over and whether the player has picked up
-        # Player choses from options 0-13 Discard, 14-16 Kong, 17-18 19 Win
+        # Player choses from options 1-14 Discard, 15-17 Kong, 18-19 20 Win
         if len(self.wall) == 0:
             # Game is over with no winner (winning player remains -1)
             return (False, self.calculate_rewards(0))
@@ -519,33 +518,32 @@ class Environment:
         options = []
         # Player can discard a tile
         for i in range(len(self.hands[self.current_player])):
-            options.append(i)
+            options.append(i+1)
             
-        # Player could have 0-3 ways to kong from hand (options 14-16), needs additional tile from wall
+        # Player could have 0-3 ways to kong from hand (options 15-17), needs additional tile from wall
         if kong_options(self.hands[self.current_player]) and len(self.wall) > 0:
             for i in range(len((kong_options(self.hands[self.current_player])))):
-                options.append(14 + i)
-        # Player could kong onto exposed pong (option 17-18), needs additional tile from wall
+                options.append(15 + i)
+        # Player could kong onto exposed pong (option 18-19), needs additional tile from wall
         if kong_onto_meld_options(self.hands[self.current_player], self.melds[self.current_player]) and len(self.wall) > 0:
             for i in range(len(kong_onto_meld_options(self.hands[self.current_player], self.melds[self.current_player]))):
-                options.append(17 + i)
-        # Player may be able to win (option 19)
+                options.append(18 + i)
+        # Player may be able to win (option 20)
         if score(self.hands[self.current_player], self.melds[self.current_player], self.round_wind, self.hand_wind) >= 8:
-            options.append(19)
+            options.append(20)
 
-        # Make decision (0-19 relevant)
-        # TODO Implement Agent
+        # Make decision (1-20 relevant)
         choice = agent.choose(self.encode_state(self.current_player), options, self.current_player) 
         # choice = random.choice(options)
-        if choice < 14:
+        if choice < 15:
             # Discard a tile
-            self.discards.append(self.hands[self.current_player].pop(choice))
+            self.discards.append(self.hands[self.current_player].pop(choice - 1))
             return (False, [])
         
-        elif choice < 17:
+        elif choice < 18:
             # Kong
             options = kong_options(self.hands[self.current_player])
-            tile = options[choice - 14]
+            tile = options[choice - 15]
             # Add to melds and remove from hand
             self.melds[self.current_player].append([tile] * 4)
             for i in range(4):
@@ -555,10 +553,10 @@ class Environment:
             # Player has picked up
             return (True, [])
         
-        elif choice < 19:
+        elif choice < 20:
             # Kong onto exposed pong
             options = kong_onto_meld_options(self.hands[self.current_player], self.melds[self.current_player])
-            tile = options[choice - 17]
+            tile = options[choice - 18]
             # Add to melds and remove from hand
             for meld in self.melds[self.current_player]:
                 type, first_tile = classify_meld(meld) 
@@ -571,26 +569,26 @@ class Environment:
             # Player has picked up
             return (True, [])
 
-        elif choice == 19:
+        elif choice == 20:
             # Win, self pickup
             print("Player " + str(self.current_player) + " wins from wall")
             return (False, self.calculate_rewards(1, score(self.hands[self.current_player], self.melds[self.current_player], self.round_wind, self.hand_wind)))
         
     def post_discard(self, agent):
         # Player has discarded a tile, other players have option to pong, chow, kong, or win
-        player_options = [[-1], [-1], [-1], [-1]] # -1 for no action, 19 for win, 20 for pong, 21 for kong, 22-24 for chows
+        player_options = [[-1], [-1], [-1], [-1]] # 0 for no action, 20 for win, 21 for pong, 22 for kong, 23-25 for chows
         # Check win off discard
         for player in range(4):
             if score(self.hands[player] + [self.discards[-1]], self.melds[player], self.round_wind, self.hand_wind) >= 8:
-                player_options[player] += [19]
+                player_options[player] += [20]
         # Check Pong
         for player in range(4):
             if self.hands[player].count(self.discards[-1]) >= 2:
-                player_options[player] += [20]
+                player_options[player] += [21]
         # Check Kong
         for player in range(4):
             if self.hands[player].count(self.discards[-1]) == 3 and len(self.wall) > 0:
-                player_options[player] += [21]
+                player_options[player] += [22]
         # Check Chow, only possible for player to the right of discarder
         player = (self.current_player + 1) % 4
         if self.discards[-1].suit < 4:
@@ -598,24 +596,22 @@ class Environment:
             suit = self.discards[-1].suit
             number = self.discards[-1].number
             if Tile(suit, number - 2) in self.hands[player] and Tile(suit, number - 1) in self.hands[player]:
-                player_options[player] += [22]
-            elif Tile(suit, number - 1) in self.hands[player] and Tile(suit, number + 1) in self.hands[player]:
                 player_options[player] += [23]
-            elif Tile(suit, number + 1) in self.hands[player] and Tile(suit, number + 2) in self.hands[player]:
+            elif Tile(suit, number - 1) in self.hands[player] and Tile(suit, number + 1) in self.hands[player]:
                 player_options[player] += [24]
+            elif Tile(suit, number + 1) in self.hands[player] and Tile(suit, number + 2) in self.hands[player]:
+                player_options[player] += [25]
 
-        # Make decisions -1 or 19-24
+        # Make decisions 0 or 20-25
         player_choices = [[], [], [], []]
         
         for player in range(4):
-            # TODO Implement Agent
+            # Agent Chooses
             player_choices[player] = agent.choose(self.encode_state(player), player_options[player], player) 
-            #player_choices[player] = random.choice(player_options[player])
-            #print("Player " + str(player) + " chose option: " + str(player_choices[player]))
             
         # Implement decisions based on priority (from right of discarder if tie)
         for i in range(1, 5):
-            if player_choices[(self.current_player + i) % 4] == 19:
+            if player_choices[(self.current_player + i) % 4] == 20:
                 # Win
                 discarder = self.current_player
                 self.current_player = (self.current_player + i) % 4
@@ -624,7 +620,7 @@ class Environment:
             
         for i in range(1, 5):
             player = (self.current_player + i) % 4
-            if player_choices[player] == 20:
+            if player_choices[player] == 21:
                 # Pong, add to melds and remove from hand
                 tile = self.discards[-1]
                 self.melds[player].append([tile] * 3)
@@ -633,7 +629,7 @@ class Environment:
                 # Update current player
                 self.current_player = player
                 return (False, [])
-            elif player_choices[player] == 21:
+            elif player_choices[player] == 22:
                 # Kong
                 tile = self.discards[-1]
                 self.melds[player].append([tile] * 4)
@@ -649,17 +645,17 @@ class Environment:
         player = (self.current_player + 1) % 4
         suit = self.discards[-1].suit
         number = self.discards[-1].number
-        if player_choices[player] == 22:
+        if player_choices[player] == 23:
                 # Chow with discard as highest
                 self.melds[player].append([Tile(suit, number - 2), Tile(suit, number - 1), self.discards.pop()])
                 self.hands[player].remove(Tile(suit, number - 2))
                 self.hands[player].remove(Tile(suit, number - 1))
-        elif player_choices[player] == 23:
+        elif player_choices[player] == 24:
                 # Chow with discard as middle
                 self.melds[player].append([Tile(suit, number - 1), Tile(suit, number + 1), self.discards.pop()])
                 self.hands[player].remove(Tile(suit, number - 1))
                 self.hands[player].remove(Tile(suit, number + 1))
-        elif player_choices[player] == 24:
+        elif player_choices[player] == 25:
                 # Chow with discard as lowest
                 self.melds[player].append([Tile(suit, number + 1), Tile(suit, number + 2), self.discards.pop()])
                 self.hands[player].remove(Tile(suit, number + 1))
@@ -687,59 +683,3 @@ class Environment:
             if rewards:
                 break   
         return rewards
-
-def simulate_iterations(iterations):
-    # Create a new instance of Environment for this process
-    env = Environment()
-    agent = neural.Agent()
-    wins = 0
-    total_discards = 0
-    for _ in range(iterations):
-        rewards = env.play_game(agent)
-        if rewards != [-0.1, -0.1, -0.1, -0.1]:
-            #env.print_state()
-            wins += 1
-        total_discards += len(env.discards)
-    return wins, total_discards / iterations
-
-def main_multiprocess():
-    total_iterations = 100000
-    num_processes = 10  # Number of processes to run concurrently
-    iterations_per_process = total_iterations // num_processes
-
-    overall_wins = 0
-    overall_discards = 0.0
-
-    with concurrent.futures.ProcessPoolExecutor(max_workers=num_processes) as executor:
-        futures = [executor.submit(simulate_iterations, iterations_per_process)
-                   for _ in range(num_processes)]
-        for future in concurrent.futures.as_completed(futures):
-            wins, avg_discards = future.result()
-            overall_wins += wins
-            overall_discards += avg_discards
-
-    overall_discards /= num_processes  # Average discards across processes
-    print("Total games won:", overall_wins)
-    print("Average number of discards at game end:", overall_discards)
-
-def main():
-    
-    env = Environment()
-    agent = neural.Agent()
-    itterations = 1000
-    wins = discards = 0
-    for _ in range(itterations):
-        if env.play_game(agent) != [-0.1, -0.1, -0.1, -0.1]:
-            wins += 1
-        discards += len(env.discards)
-    discards = discards / itterations
-    
-    print("Done")
-    print("Games won: ")
-    print(wins)
-    print("Average number of discards at game end: ")
-    print(discards)
-
-if __name__ == "__main__":
-    main_multiprocess()
-    #main()
