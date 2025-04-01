@@ -10,12 +10,8 @@ import environment
 
 def main():
 
-    # Check if DirectML is available
-    if hasattr(torch, 'directml'):
-        device = torch.device("dml")
-    else:
-        device = torch.device("cpu")
-    print(f"Running on {device}")
+    # In a ROCm-enabled WSL2 system, torch.cuda.is_available() should return True.
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Create a new instance of Environment for this process
     iterations = 10000

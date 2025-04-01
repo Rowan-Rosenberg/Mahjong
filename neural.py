@@ -8,11 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
 
-# Check if DirectML is available
-if hasattr(torch, 'directml'):
-    device = torch.device("dml")
-else:
-    device = torch.device("cpu")
+# Set the device to "cuda" if available (ROCm will use this path)
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Agent(nn.Module):
     def __init__(self, input_size=242, hidden_size=128, output_size=26):
