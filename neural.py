@@ -7,24 +7,29 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Categorical
+import threading
 
 # Set the device to "cuda" if available (ROCm will use this path)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Agent(nn.Module):
-    def __init__(self, input_size=242, hidden_size=128, output_size=26):
+    def __init__(self, input_size=242, hidden_one_size=6292, hidden_two_size=6292, output_size=26):
 
         super(Agent, self).__init__()
-        self.fc1 = nn.Linear(input_size, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, output_size)
+        self.fc1 = nn.Linear(input_size, hidden_one_size)
+        self.fc2 = nn.Linear(hidden_one_size, hidden_two_size)
+        self.fc3 = nn.Linear(hidden_two_size, output_size)
         
         # For multi-player, store each player's log probabilities separately.
         self.saved_log_probs = {0: [], 1: [], 2: [], 3: []}
+        # Create a lock for thread-safe updates.
+        self.lock = threading.Lock()
 
     def forward(self, x):
 
         x = F.relu(self.fc1(x))
-        logits = self.fc2(x)
+        x = F.relu(self.fc2(x))
+        logits = self.fc3(x)
         return logits
 
     def choose(self, encoding, options, player_num):
@@ -43,7 +48,8 @@ class Agent(nn.Module):
         action_idx = distribution.sample()
         
         # Save log probability for later update in the corresponding player's memory.
-        self.saved_log_probs[player_num].append(distribution.log_prob(action_idx))
+        with self.lock:
+            self.saved_log_probs[player_num].append(distribution.log_prob(action_idx))
         
         # Return the corresponding action (which is one of the valid options).
         chosen_action = options[action_idx.item()]
@@ -52,7 +58,8 @@ class Agent(nn.Module):
 
     def clear_memory(self):
 
-        self.saved_log_probs = {0: [], 1: [], 2: [], 3: []}
+        with self.lock:
+            self.saved_log_probs = {0: [], 1: [], 2: [], 3: []}
 
 
 def finish_episode(agent, optimizer, final_rewards):
