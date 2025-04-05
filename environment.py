@@ -1,9 +1,8 @@
 """
     Environment to simulate a mahjong competion rules (official Chineese version, without flowers) game for machine learning
+    Note that it has only partial scoring implemented
     Written by Rowan Rosenberg 2025
 """
-
-#TODO: Implement agent, implement full scoring
 
 from enum import Enum
 import random
@@ -370,21 +369,11 @@ def classify_meld(meld):
     return (type, first_tile)
 
 def score(hand, melds, round_wind, hand_wind):
-    # TODO Implement full rules including winds
+    # Note - Every win is scored 8 as a placeholder, this should be replaced with a full scoring system
     sets = partition_tiles(hand)
     if not sets:
         # Hand can not be made into sets and eyes
         return 0
-    
-    all_sets = sets + melds
-    # Contains type, lowest tile tuples
-    # Types 0- pong, 1- kong, 2- chow, 3- eyes
-    classified_all_sets = []
-    for set in all_sets:
-        classified_all_sets.append(classify_meld(set))
-
-    #for set in classified_all_sets:
-    #    print(set)
     
     # Set any win as 8
     score = 8

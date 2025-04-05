@@ -9,7 +9,7 @@ import torch.nn.functional as F
 from torch.distributions import Categorical
 import threading
 
-# Set the device to "cuda" if available (ROCm will use this path)
+# Check if GPU is available and set the device accordingly
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Agent(nn.Module):

@@ -33,7 +33,7 @@ def run_episodes(num_episodes, agent, optimizer):
 
 def main():
 
-    # In a ROCm-enabled WSL2 system, torch.cuda.is_available() should return True
+    # Check if GPU is available and set the device accordingly
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
