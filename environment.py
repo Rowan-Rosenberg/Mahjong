@@ -413,17 +413,8 @@ class Environment:
         self.hand_wind = (self.hand_wind + 1) % 4
 
     def encode_state(self, player):
-        """
-        State   Tile1 ....... TileN  Extra
-        
-        in hand                      own number
-        own melds                    hand wind
-        melds of next                round wind
-        .... x2                                  
-        discards                     
-        last discard (one hot)
-        1-241 positions with value 0-4
-        """
+        # State consists of number of tiles in each players hand and melds, starting with current player
+        # Followed by tiles in discard pile, a one-hot encoding of the last discarded tile, and wind information
         state = np.zeros(242)
 
         for tile in self.hands[player]:
@@ -438,7 +429,7 @@ class Environment:
             state[170 + tile.position()] += 1 
 
         if self.discards:
-            state[204 + self.discards[-1].position()]
+            state[204 + self.discards[-1].position()] = 1
         state[239] = player
         state[240] = self.hand_wind
         state[241] = self.round_wind
