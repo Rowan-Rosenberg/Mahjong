@@ -7,17 +7,13 @@ import concurrent.futures
 import torch
 import neural
 import environment
-import threading
 
-# Global lock to protect shared update of the agent
-agent_update_lock = threading.Lock()
-
-def run_episodes(num_episodes, agent, optimizer):
+def run_episodes(num_episodes, agent):
     # Run a number of episodes in parallel and return the total wins and discards
     local_cumulative_rewards = [0, 0, 0, 0]
     local_wins = 0
     local_discards = 0
-    # Each thread uses its own Environment instance.
+    # Each thread uses its own Environment instance
     env_instance = environment.Environment()
     for _ in range(num_episodes):
         rewards = env_instance.play_game(agent)
@@ -26,10 +22,8 @@ def run_episodes(num_episodes, agent, optimizer):
         if rewards != [-0.1, -0.1, -0.1, -0.1]:
             local_wins += 1
         local_discards += len(env_instance.discards)
-    # Update the policy safely.
-    with agent_update_lock:
-        neural.finish_episode(agent, optimizer, local_cumulative_rewards)
-    return local_wins, local_discards
+    
+    return local_wins, local_discards, local_cumulative_rewards
 
 def main():
 
@@ -37,9 +31,10 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    iterations = 262144 # 16*16*1024
-    num_threads = 16  
-    episodes_per_thread = 16
+    iterations = 20000 
+    num_threads = 10  
+    episodes_per_thread = 20
+    # Each set contiinues for num_threads * episodes_per_thread
     total_sets = iterations // (num_threads * episodes_per_thread)
 
     agent = neural.Agent().to(device)
@@ -51,14 +46,20 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=num_threads) as executor:
         for set_idx in range(total_sets):
             futures = []
-            # Launch threads to run episodes concurrently.
+            # Launch threads to run episodes concurrently
             for _ in range(num_threads):
-                futures.append(executor.submit(run_episodes, episodes_per_thread, agent, optimizer))
-            # Gather results.
+                futures.append(executor.submit(run_episodes, episodes_per_thread, agent))
+            # Gather results
+            cumulative_rewards = [0, 0, 0, 0]
             for future in concurrent.futures.as_completed(futures):
-                thread_wins, thread_discards = future.result()
+                thread_wins, thread_discards, thread_rewards = future.result()
+                cumulative_rewards = [cumulative_rewards[i] + thread_rewards[i] for i in range(4)]
                 wins += thread_wins
                 total_discards += thread_discards
+
+            # Update the agent with the cumulative rewards from all threads
+            neural.finish_episode(agent, optimizer, cumulative_rewards)
+
             print(f"Set {set_idx} finished")
 
     print(f"Games won: {wins} of {iterations}")
